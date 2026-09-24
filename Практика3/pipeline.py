@@ -31,23 +31,30 @@ except ImportError:
                 os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
 
 # ================== НАСТРОЙКА (это и меняете) ==================
-TARGET = "goldapple.ru"     # ← ВПИШИТЕ СВОЙ ДОМЕН (реальный, напр. ozon.ru)
+TARGET = "yandex.ru"        # Целевой домен для практики
 CAP = 40                    # сколько существующих доменов отсматривать через urlscan
 # ==============================================================
 
 
 def filter_existing(candidates):
-    """Фильтрация живых доменов из всего сгенерированного списка."""
+    """Оставить кандидатов с A-записью, исключив служебные маркеры.
+
+    DNS-ответ не доказывает доступность HTTP или вредоносность домена.
+    Домены только с MX не включаем: здесь исследуем веб-страницы.
+    """
     out = []
     for c in candidates:
-        # # TODO Подумайте что тут указать вместо знаков "???" (На выбор: dns_a, dns_mx, dns_nap или dns_ns)  a = [x for x in c["dns_a"] if x and not x.startswith("!")]
-        if a:                       
+        a = [x for x in (c.get("dns_a") or [])
+             if isinstance(x, str) and x and not x.startswith("!")]
+        if a:
             out.append(c)
     return out
 
 
-def build_html(results, target, out="report.html"):
+def build_html(results, target, out="report.html", demo=False):
     """Список существующих двойников со скриншотами из urlscan."""
+    banner = ("ДЕМО: описания и изображения — учебные заглушки, не результаты сканирования."
+              if demo else "DNS-совпадение не доказывает фишинг. Требуется ручной анализ результатов urlscan.")
     rows = ""
     for r in results:
         dom = html.escape(r["domain"])
@@ -65,14 +72,19 @@ def build_html(results, target, out="report.html"):
     page = f"""<!doctype html><meta charset="utf-8"><title>Двойники {html.escape(target)}</title>
 <style>body{{font:14px system-ui;margin:24px}}table{{border-collapse:collapse}}
 td,th{{border:1px solid #ddd;padding:8px;vertical-align:top}}img{{border:1px solid #ccc}}</style>
-<h1>Существующие двойники {html.escape(target)} — со скриншотами</h1>
+<h1>Домены, похожие на {html.escape(target)}</h1>
+<p>{banner}</p>
 <table><tr><th>Домен</th><th>Скриншот</th><th>Что на домене</th><th>Скан</th></tr>
 {rows}</table>"""
-    open(out, "w", encoding="utf-8").write(page)
+    with open(out, "w", encoding="utf-8") as report:
+        report.write(page)
     print(f"Отчёт сохранён: {out}")
 
 
-def summarize(results):
+def summarize(results, demo=False):
+    if demo:
+        print("ВЫВОД: деморежим; реальные сканирования не выполнялись. Отчёт: report_demo.html")
+        return
     done = [r for r in results if r["status"] == "done"]
     withshot = [r for r in done if r["screenshot_url"]]
     print(f"ВЫВОД: проверено {len(done)} существующих двойников, "
@@ -82,7 +94,7 @@ def summarize(results):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--demo", action="store_true", help="urlscan офлайн (без ключа)")
+    ap.add_argument("--demo", action="store_true", help="без urlscan, с учебными заглушками; DNS требует сети")
     args = ap.parse_args()
 
     import coverage
@@ -98,8 +110,9 @@ def main():
         return
 
     results = scan_domains([c["domain"] for c in existing], cap=CAP, demo=args.demo)
-    build_html(results, TARGET)
-    summarize(results)
+    out = "report_demo.html" if args.demo else "report.html"
+    build_html(results, TARGET, out=out, demo=args.demo)
+    summarize(results, demo=args.demo)
 
 
 if __name__ == "__main__":

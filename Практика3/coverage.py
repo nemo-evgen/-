@@ -26,7 +26,10 @@ except ImportError:
 EXTRA_TLDS = [
     "live", "shop", "top", "online", "store", "site", "pay", "app",   # зоны
     "duckdns.org",          # пример хостинг-суффикса
-    # TODO: допишите свои найденные сервисы (напр. ...)
+    "github.io",           # GitHub Pages — https://pages.github.com/
+    "pages.dev",           # Cloudflare Pages — https://pages.cloudflare.com/
+    "netlify.app",         # Netlify — https://www.netlify.com/
+    "vercel.app",          # Vercel — https://vercel.com/
 ]
 
 # Транслит бренда — то, чего dnstwist не придумает. НЕОБЯЗАТЕЛЬНО:
@@ -76,7 +79,7 @@ def _row(dom, typ, base, a, mx):
             "dns_a": [x for x in a if x and not x.startswith("!")], "dns_mx": mx}
 
 
-def build_candidates(brand="goldapple.ru"):
+def build_candidates(brand="yandex.ru"):
     """Весь список пермутаций с покрытием (существующие и нет)."""
     seen, out = set(), []
     # 1) основной бренд — полный fuzz с DNS
@@ -103,5 +106,5 @@ if __name__ == "__main__":
     c = build_candidates()
     ex = [x for x in c if x["dns_a"] or x["dns_mx"]]
     print(f"Сгенерировано с покрытием: {len(c)} | существует: {len(ex)}")
-    json.dump({"brand": "goldapple.ru", "generated_total": len(c), "candidates": c},
+    json.dump({"brand": "yandex.ru", "generated_total": len(c), "candidates": c},
               open("candidates.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
