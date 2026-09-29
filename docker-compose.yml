@@ -1,0 +1,62 @@
+# OSINT Person Search — Этап 1 (скелет + мини-UI)
+# Запуск: docker compose up -d --build  →  UI: http://localhost:8000
+name: osint-person-search
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: osint
+      POSTGRES_PASSWORD: osint
+      POSTGRES_DB: osint
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U osint -d osint"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    ports:
+      - "8000:8000"
+    environment: &app-env
+      DATABASE_URL: postgresql+psycopg://osint:osint@postgres:5432/osint
+      CELERY_BROKER_URL: redis://redis:6379/0
+      # Секреты источников — только через .env (см. .env.example):
+      VK_TOKEN: ${VK_TOKEN:-}
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
+      SERPAPI_KEY: ${SERPAPI_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GOOGLE_CSE_ID: ${GOOGLE_CSE_ID:-}
+      DORK_MAX_EXEC: ${DORK_MAX_EXEC:-10}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:

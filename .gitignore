@@ -1,0 +1,44 @@
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+
+# Docker / runtime data (не хранить в git)
+*.db
+*.sqlite3
+data/
+volumes/
+minio-data/
+postgres-data/
+opensearch-data/
+
+# Снимки страниц, фото, отчёты (данные кейсов)
+artifacts/
+snapshots/
+reports/
+uploads/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Логи
+*.log
+logs/

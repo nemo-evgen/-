@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OSINT Person Search — MVP</title>
+<style>
+  :root { --bg:#0f141a; --panel:#171e26; --line:#263140; --txt:#d7e0ea; --muted:#7f8ea0;
+          --acc:#4da3ff; --ok:#3fcf8e; --warn:#f2b344; --err:#ef6461; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;
+         background:var(--bg); color:var(--txt); }
+  header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:baseline; }
+  header h1 { font-size:18px; margin:0; }
+  header span { color:var(--muted); font-size:13px; }
+  main { max-width:1080px; margin:0 auto; padding:20px 24px 60px; display:grid; gap:18px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  .card h2 { margin:0 0 12px; font-size:15px; color:var(--acc); text-transform:uppercase; letter-spacing:.06em; }
+  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 4px; }
+  input, select, textarea { width:100%; padding:8px 10px; background:#0c1116; color:var(--txt);
+        border:1px solid var(--line); border-radius:6px; font:inherit; }
+  .row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+  .row2 { display:grid; grid-template-columns:2fr 1fr; gap:12px; align-items:end; }
+  button { padding:9px 16px; background:var(--acc); color:#04121f; border:0; border-radius:6px;
+           font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--acc); border:1px solid var(--acc); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; }
+  .st { padding:2px 8px; border-radius:10px; font-size:12px; }
+  .st.pending { background:#24303e; color:var(--muted); }
+  .st.running { background:#12375c; color:#7cc0ff; }
+  .st.done { background:#103b2a; color:var(--ok); }
+  .st.failed { background:#481b1b; color:var(--err); }
+  .muted { color:var(--muted); font-size:12px; }
+  .chip { display:inline-block; background:#0c1116; border:1px solid var(--line); border-radius:20px;
+          padding:3px 10px; margin:2px 4px 2px 0; font-size:12px; }
+  .fact { border-left:3px solid var(--line); padding:6px 10px; margin:8px 0; background:#12181f; border-radius:0 6px 6px 0; }
+  .fact b { color:var(--acc); }
+  .warn { color:var(--warn); font-size:12px; }
+  .err { color:var(--err); font-size:13px; }
+  a { color:var(--acc); }
+  h3 { margin:14px 0 4px; font-size:14px; }
+  #hint-fields.hidden { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🕵 OSINT Person Search</h1>
+  <span>MVP · сбор из открытых источников · кейсы, джобы, досье</span>
+</header>
+<main>
+
+  <section class="card">
+    <h2>1 · Кейс</h2>
+    <div class="row2">
+      <div>
+        <label>Название расследования</label>
+        <input id="case-name" placeholder="Например: поиск Иванова И.И., Москва">
+      </div>
+      <button onclick="createCase()">Создать кейс</button>
+    </div>
+    <label>Активный кейс</label>
+    <select id="case-select" onchange="loadDossier()"></select>
+    <label>Правовое основание (152-ФЗ / GDPR)</label>
+    <input id="case-legal" placeholder="например: поручение №… от … / согласие субъекта / публичный интерес">
+  </section>
+
+  <section class="card">
+    <h2>2 · Поиск</h2>
+    <div class="row2">
+      <div>
+        <label>Тип входа</label>
+        <select id="in-type" onchange="toggleHints()">
+          <option value="vk">VK — профиль (ссылка / ник)</option>
+          <option value="username">Username — общий ник</option>
+          <option value="name">ФИО + подсказки (возраст, город, вуз)</option>
+          <option value="telegram">Telegram — @ник (пассивно)</option>
+        </select>
+      </div>
+      <button onclick="runSearch()">Запустить поиск</button>
+    </div>
+    <label id="val-label">Значение (URL / ник / ФИО)</label>
+    <input id="in-value" placeholder="https://vk.com/… | ivanov | Иванов Иван Иванович">
+
+    <div id="hint-fields">
+      <div class="row">
+        <div><label>Возраст</label><input id="h-age" placeholder="22"></div>
+        <div><label>Город</label><input id="h-city" placeholder="Москва"></div>
+        <div><label>Университет</label><input id="h-university" placeholder="МГУ"></div>
+      </div>
+    </div>
+    <p class="muted">Входы: VK → <code>vk_profile</code>; ФИО → <code>dorks</code>; username → <code>maigret</code> + dorks. Telegram — только пассивные методы.</p>
+  </section>
+
+  <section class="card">
+    <h2>3 · Джобы</h2>
+    <table id="jobs-table">
+      <thead><tr><th>#</th><th>Тип</th><th>Вход</th><th>Статус</th><th>Итог</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="job-detail"></div>
+  </section>
+
+  <section class="card">
+    <h2>4 · Досье</h2>
+    <div id="dossier"><p class="muted">Кейс не выбран.</p></div>
+  </section>
+
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const api = async (path, opts) => {
+  const r = await fetch(path, {headers:{'Content-Type':'application/json'}, ...opts});
+  if (!r.ok) throw new Error((await r.json()).detail || r.status);
+  return r.json();
+};
+let currentCase = null;
+
+function toggleHints() {
+  const t = $('in-type').value;
+  $('hint-fields').classList.toggle('hidden', t !== 'name');
+  $('val-label').textContent =
+    t === 'vk' ? 'Ссылка или ник VK' :
+    t === 'username' ? 'Ник (без @)' :
+    t === 'telegram' ? 'Ник Telegram (без @)' : 'ФИО';
+}
+
+async function createCase() {
+  const name = $('case-name').value.trim();
+  if (!name) return alert('Введите название кейса');
+  try {
+    const c = await api('/api/cases', {method:'POST',
+      body: JSON.stringify({name, legal_basis: $('case-legal').value.trim() || null})});
+    await refreshCases(c.id);
+  } catch (e) { alert(e.message); }
+}
+
+async function refreshCases(selectId) {
+  const cases = await api('/api/cases');
+  const sel = $('case-select');
+  sel.innerHTML = cases.map(c => `<option value="${c.id}">#${c.id} ${escapeHtml(c.name)}</option>`).join('');
+  if (selectId) sel.value = String(selectId);
+  currentCase = sel.value ? Number(sel.value) : null;
+  loadDossier();
+}
+
+async function runSearch() {
+  if (!currentCase) return alert('Создайте/выберите кейс');
+  const type = $('in-type').value;
+  const value = $('in-value').value.trim();
+  if (!value) return alert('Введите значение');
+  const hints = {};
+  if ($('h-age').value.trim()) hints.age = $('h-age').value.trim();
+  if ($('h-city').value.trim()) hints.city = $('h-city').value.trim();
+  if ($('h-university').value.trim()) hints.university = $('h-university').value.trim();
+  if (type === 'name') hints.full_name = value;
+  try {
+    await api(`/api/cases/${currentCase}/searches`, {method:'POST',
+      body: JSON.stringify({input_type:type, input_value:value, hints})});
+    await loadDossier();
+  } catch (e) { alert(e.message); }
+}
+
+function statusBadge(s) { return `<span class="st ${s}">${s}</span>`; }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function loadDossier() {
+  const sel = $('case-select');
+  currentCase = sel.value ? Number(sel.value) : null;
+  const box = $('dossier'), tbody = document.querySelector('#jobs-table tbody');
+  if (!currentCase) { tbody.innerHTML=''; box.innerHTML = '<p class="muted">Кейс не выбран.</p>'; return; }
+  let d;
+  try { d = await api(`/api/cases/${currentCase}`); }
+  catch (e) { box.innerHTML = `<p class="err">${escapeHtml(e.message)}</p>`; return; }
+
+  tbody.innerHTML = d.jobs.map(j => `
+    <tr>
+      <td>${j.id}</td><td>${j.input_type}</td>
+      <td>${escapeHtml(j.input_value)}</td>
+      <td>${statusBadge(j.status)}</td>
+      <td>${j.summary && j.summary.new_facts != null
+            ? `фактов: +${j.summary.new_facts}, акк.: +${j.summary.new_accounts}` : '—'}
+          ${j.error ? `<div class="err">${escapeHtml(j.error)}</div>` : ''}
+          ${(j.warnings||[]).map(w => `<div class="warn">⚠ ${escapeHtml(w)}</div>`).join('')}
+      </td>
+    </tr>`).join('') || '<tr><td colspan="5" class="muted">Джобов нет</td></tr>';
+
+  box.innerHTML = d.persons.length ? d.persons.map(p => `
+    <div class="person">
+      <h3>👤 ${escapeHtml(p.display_name)} <span class="muted">(confidence ${p.confidence})</span></h3>
+      <div>${p.accounts.map(a => `<a class="chip" target="_blank" rel="noopener"
+            href="${escapeHtml(a.url||'#')}">${escapeHtml(a.platform)}/${escapeHtml(a.handle)}
+            · ${a.confidence}</a>`).join('') || '<span class="muted">нет аккаунтов</span>'}</div>
+      ${p.facts.map(f => `<div class="fact">
+            <b>${escapeHtml(f.kind)}</b> <span class="muted">· conf ${f.confidence}</span>
+            ${f.source_url ? ` · <a href="${escapeHtml(f.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}
+            <div>${escapeHtml(JSON.stringify(f.value)).slice(0, 400)}</div>
+          </div>`).join('')}
+    </div>`).join('') : '<p class="muted">Пока пусто — запустите поиск.</p>';
+
+  if (d.jobs.some(j => j.status === 'pending' || j.status === 'running'))
+    setTimeout(loadDossier, 2000);
+}
+
+refreshCases().catch(e => {
+  document.getElementById('dossier').innerHTML =
+    `<p class="err">API недоступен: ${escapeHtml(e.message)}</p>`;
+});
+toggleHints();
+</script>
+</body>
+</html>
