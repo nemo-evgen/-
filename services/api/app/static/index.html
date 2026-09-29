@@ -76,12 +76,19 @@
           <option value="username">Username — общий ник</option>
           <option value="name">ФИО + подсказки (возраст, город, вуз)</option>
           <option value="telegram">Telegram — @ник (пассивно)</option>
+          <option value="photo">Фото — по URL изображения</option>
         </select>
       </div>
       <button onclick="runSearch()">Запустить поиск</button>
     </div>
     <label id="val-label">Значение (URL / ник / ФИО)</label>
     <input id="in-value" placeholder="https://vk.com/… | ivanov | Иванов Иван Иванович">
+
+    <label>…или загрузить фото с компьютера (EXIF + pHash + лицо)</label>
+    <div class="row2">
+      <input type="file" id="in-file" accept="image/jpeg,image/png,image/webp,image/gif">
+      <button class="ghost" onclick="uploadPhoto()">Загрузить и найти</button>
+    </div>
 
     <div id="hint-fields">
       <div class="row">
@@ -124,7 +131,25 @@ function toggleHints() {
   $('val-label').textContent =
     t === 'vk' ? 'Ссылка или ник VK' :
     t === 'username' ? 'Ник (без @)' :
-    t === 'telegram' ? 'Ник Telegram (без @)' : 'ФИО';
+    t === 'telegram' ? 'Ник Telegram (без @)' :
+    t === 'photo' ? 'URL изображения (https://…)' : 'ФИО';
+}
+
+async function uploadPhoto() {
+  if (!currentCase) return alert('Создайте/выберите кейс');
+  const input = $('in-file');
+  if (!input.files || !input.files[0]) return alert('Выберите файл изображения');
+  const fd = new FormData();
+  fd.append('file', input.files[0]);
+  try {
+    const r = await fetch(`/api/cases/${currentCase}/photos`, {method: 'POST', body: fd});
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d.detail || r.status);
+    }
+    input.value = '';
+    await loadDossier();
+  } catch (e) { alert(e.message); }
 }
 
 async function createCase() {
@@ -167,6 +192,32 @@ function statusBadge(s) { return `<span class="st ${s}">${s}</span>`; }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+function factBody(f) {
+  const v = f.value || {};
+  if (f.kind === 'photo.upload' && (v.ref || '').startsWith('upload://')) {
+    const name = v.ref.slice(9);
+    return `<img src="/api/files/${escapeHtml(name)}" style="max-height:140px;border-radius:6px;display:block">
+            <div class="muted">sha256: ${escapeHtml((v.sha256 || '').slice(0, 32))}… · ${v.bytes} байт</div>`;
+  }
+  if (f.kind === 'photo.reverse_link') {
+    return `<a href="${escapeHtml(v.link || '#')}" target="_blank" rel="noopener">открыть в ${escapeHtml(v.engine)}</a>`;
+  }
+  if (f.kind === 'photo.match' || f.kind === 'photo.face_match') {
+    const m = v.method === 'sface' ? `лицо cosine=${v.cosine} (${v.verdict})` : `pHash distance=${v.distance}`;
+    const tgt = (v.target || '');
+    const link = tgt.startsWith('http') ? `<a href="${escapeHtml(tgt)}" target="_blank" rel="noopener">${escapeHtml(tgt)}</a>` : escapeHtml(tgt);
+    return `<b style="color:var(--ok)">СОВПАДЕНИЕ</b> · ${m}<div>${link} <span class="muted">[${escapeHtml(v.target_kind || '')}]</span></div>`;
+  }
+  if (f.kind === 'search.query' && v.url) {
+    return `<a href="${escapeHtml(v.url)}" target="_blank" rel="noopener">${escapeHtml(v.query || v.url)}</a>`;
+  }
+  if (f.kind === 'search.result') {
+    return `${v.rank ? '#' + v.rank + ' ' : ''}<a href="${escapeHtml(f.source_url || '#')}" target="_blank" rel="noopener">${escapeHtml(v.title || f.source_url)}</a>
+            ${v.snippet ? `<div class="muted">${escapeHtml(v.snippet)}</div>` : ''}`;
+  }
+  return escapeHtml(JSON.stringify(v)).slice(0, 400);
+}
+
 async function loadDossier() {
   const sel = $('case-select');
   currentCase = sel.value ? Number(sel.value) : null;
@@ -196,8 +247,8 @@ async function loadDossier() {
             · ${a.confidence}</a>`).join('') || '<span class="muted">нет аккаунтов</span>'}</div>
       ${p.facts.map(f => `<div class="fact">
             <b>${escapeHtml(f.kind)}</b> <span class="muted">· conf ${f.confidence}</span>
-            ${f.source_url ? ` · <a href="${escapeHtml(f.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}
-            <div>${escapeHtml(JSON.stringify(f.value)).slice(0, 400)}</div>
+            ${f.source_url && f.source_url.startsWith('http') ? ` · <a href="${escapeHtml(f.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}
+            <div>${factBody(f)}</div>
           </div>`).join('')}
     </div>`).join('') : '<p class="muted">Пока пусто — запустите поиск.</p>';
 

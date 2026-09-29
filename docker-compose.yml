@@ -41,6 +41,10 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       GOOGLE_CSE_ID: ${GOOGLE_CSE_ID:-}
       DORK_MAX_EXEC: ${DORK_MAX_EXEC:-10}
+      UPLOAD_DIR: /app/data/uploads
+      MODELS_DIR: /app/models
+    volumes:
+      - ./data/uploads:/app/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,6 +56,9 @@ services:
       context: .
       dockerfile: services/worker/Dockerfile
     environment: *app-env
+    volumes:
+      - ./data/uploads:/app/data/uploads   # фото кейсов (api пишет, worker читает)
+      - ./models:/app/models               # ONNX-модели лиц (кэш)
     depends_on:
       postgres:
         condition: service_healthy

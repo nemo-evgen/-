@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-InputType = Literal["vk", "username", "name", "telegram"]
+InputType = Literal["vk", "username", "name", "telegram", "photo"]
 
 
 class CaseCreate(BaseModel):

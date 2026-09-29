@@ -123,3 +123,21 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(100))
     detail: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Photo(Base):
+    """Изображение кейса: pHash + (опц.) face embedding для сшивки."""
+
+    __tablename__ = "photos"
+    __table_args__ = (UniqueConstraint("case_id", "ref", name="uq_photo_ref"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    case_id: Mapped[int] = mapped_column(ForeignKey("cases.id"), index=True)
+    job_id: Mapped[int | None] = mapped_column(ForeignKey("search_jobs.id"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(16), default="query")  # query | avatar | found
+    ref: Mapped[str] = mapped_column(String(1000))                  # upload://… | https://…
+    source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    phash: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    face_embedding: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)

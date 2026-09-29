@@ -49,3 +49,21 @@ DORK_EXEC_TIMEOUT = _int("DORK_EXEC_TIMEOUT", 15)
 # --- Telegram (Этап 1.1, только пассивно) ---
 TG_TIMEOUT = _int("TG_TIMEOUT", 12)
 TG_POSTS_LIMIT = _int("TG_POSTS_LIMIT", 15)
+
+# --- Фото (Этап 2) ---
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "data/uploads")   # куда падают загрузки
+MODELS_DIR = os.getenv("MODELS_DIR", "models")         # ONNX-модели лиц
+MAX_UPLOAD_BYTES = _int("MAX_UPLOAD_BYTES", 15 * 1024 * 1024)
+PHASH_MAX_DISTANCE = _int("PHASH_MAX_DISTANCE", 6)     # Hamming ≤ → совпадение
+FACE_STRONG = float(os.getenv("FACE_STRONG", "0.55"))  # cosine ≥ → likely same
+FACE_POSSIBLE = float(os.getenv("FACE_POSSIBLE", "0.45"))
+PHOTO_TARGET_LIMIT = _int("PHOTO_TARGET_LIMIT", 30)    # сколько аватарок обработать
+PHOTO_DOWNLOAD_TIMEOUT = _int("PHOTO_DOWNLOAD_TIMEOUT", 15)
+FACE_MODEL_YUNET = (
+    "https://raw.githubusercontent.com/opencv/opencv_zoo/main/models/"
+    "face_detection_yunet/face_detection_yunet_2023mar.onnx"
+)
+FACE_MODEL_SFACE = (
+    "https://raw.githubusercontent.com/opencv/opencv_zoo/main/models/"
+    "face_recognition_sface/face_recognition_sface_2021dec.onnx"
+)

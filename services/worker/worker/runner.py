@@ -8,6 +8,7 @@ import logging
 
 from core import (  # noqa: F401  (регистрация коллекторов в реестре)
     dorks_collector,
+    photo_collector,
     tg_collector,
     username_collector,
     vk_collector,

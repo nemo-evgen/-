@@ -3,3 +3,6 @@ sqlalchemy>=2.0
 psycopg[binary]>=3.1
 requests>=2.32
 maigret>=0.6
+Pillow>=11
+numpy>=2.0
+opencv-python-headless>=4.10

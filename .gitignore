@@ -42,3 +42,4 @@ uploads/
 # Логи
 *.log
 logs/
+models/
