@@ -104,8 +104,9 @@ class Fact(Base):
     person_id: Mapped[int | None] = mapped_column(ForeignKey("persons.id"), nullable=True, index=True)
     job_id: Mapped[int | None] = mapped_column(ForeignKey("search_jobs.id"), nullable=True)
     kind: Mapped[str] = mapped_column(String(100), index=True)
-    value: Mapped[dict] = mapped_column(JSON, default=dict)
+    value: Mapped[dict] = mapped_column(JSON, default=dict)  # engine json_serializer: ensure_ascii=False (кириллица → SQL LIKE)
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    artifacts: Mapped[list] = mapped_column(JSON, default=list)  # снимки: file:// | minio://
     captured_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     confidence: Mapped[float] = mapped_column(Float, default=0.7)
     payload_hash: Mapped[str] = mapped_column(String(64))

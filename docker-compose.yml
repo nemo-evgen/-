@@ -43,13 +43,23 @@ services:
       DORK_MAX_EXEC: ${DORK_MAX_EXEC:-10}
       UPLOAD_DIR: /app/data/uploads
       MODELS_DIR: /app/models
+      SNAPSHOT_DIR: /app/data/snapshots
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
     volumes:
       - ./data/uploads:/app/data/uploads
+      - ./data/snapshots:/app/data/snapshots   # file-режим снимков (fallback)
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      opensearch:
+        condition: service_started
+      minio:
+        condition: service_started
 
   worker:
     build:
@@ -58,12 +68,47 @@ services:
     environment: *app-env
     volumes:
       - ./data/uploads:/app/data/uploads   # фото кейсов (api пишет, worker читает)
+      - ./data/snapshots:/app/data/snapshots
       - ./models:/app/models               # ONNX-модели лиц (кэш)
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      opensearch:
+        condition: service_started
+      minio:
+        condition: service_started
+
+  # Полнотекстовый поиск (дев-профиль; без него — SQL-fallback)
+  opensearch:
+    image: opensearchproject/opensearch:2
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # Хранилище снимков-доказательств (дев; без него — file-режим)
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
 
 volumes:
   pgdata:
+  opensearch-data:
+  minio-data:

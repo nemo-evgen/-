@@ -6,7 +6,7 @@
 
 ## Статус: Этапы 0–2 ✅
 
-Реализовано и проверено (`tests/smoke_runner.py`, `tests/test_collectors.py`, `tests/test_photo.py`):
+Реализовано и проверено (`tests/smoke_runner.py`, `tests/test_collectors.py`, `tests/test_photo.py`, `tests/test_storage_search.py`):
 
 - ✅ `docker compose up` → API + мини-UI кейсов на `http://localhost:8000`
 - ✅ Кейсы → поисковые джобы → очередь (Redis/Celery) → коллекторы → нормализация → досье
@@ -21,6 +21,10 @@
     pHash-матчи + локальная face-верификация (YuNet+SFace, ONNX скачивается в `models/`,
     без внешних face-сервисов; при недоступности сетей — честный warning)
 - ✅ Модель: Case / SearchJob / Person / Account / Fact / AuditLog / Photo
+- ✅ **Снимки-доказательства**: коллекторы сохраняют сырой HTML/JSON (MinIO в compose,
+  file-режим без Docker), у фактов — `artifacts`, в UI кнопка «📑 снимок»
+- ✅ **Полнотекстовый поиск**: OpenSearch (в compose) с SQL-fallback — эндпоинт
+  `/api/search` + карточка «Полный поиск по фактам» в UI (работает по кириллице)
 - ✅ Аудит запусков, идемпотентность джоб, дедупликация фактов
 
 ## Быстрый старт
@@ -82,6 +86,8 @@ export PYTHONPATH=$PWD:$PWD/services/worker
 | `POST` | `/api/cases/{id}/searches` | запустить поиск `{input_type, input_value, hints}` |
 | `POST` | `/api/cases/{id}/photos` | multipart-загрузка фото → джоба `photo` |
 | `GET` | `/api/files/{name}` | отдать загруженное фото (hex32+ext, anti-traversal) |
+| `GET` | `/api/search?q=…&case_id=` | полнотекстовый поиск по фактам (OS или SQL) |
+| `GET` | `/api/snapshots?ref=…` | отдать снимок-доказательство (file:// / minio://) |
 | `GET` | `/api/cases/{id}` | досье: джобы + люди + аккаунты + факты |
 | `GET` | `/api/jobs/{id}` | статус джобы |
 | `GET` | `/healthz` | здоровье |
@@ -89,8 +95,8 @@ export PYTHONPATH=$PWD:$PWD/services/worker
 
 ## Планы (см. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md))
 
-- **Этап 2 (остаток)**: OpenSearch для полнотекста, MinIO-снимки страниц, автоскриншоты источников
-- **Этап 3**: умный entity resolution (скоринг ФИО+город+вуз, face-матчи в сшивку), граф связей
+- **Этап 2** ✅: photo-collector, снимки-доказательства (MinIO/file), полнотекст (OpenSearch/SQL)
+- **Этап 3**: умный entity resolution (скоринг ФИО+город+вуз, face-матчи в сшивку), граф связей, RBAC
 
 ## Правовые основы
 

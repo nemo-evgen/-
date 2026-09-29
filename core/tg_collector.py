@@ -97,12 +97,19 @@ def run(job: CollectorInput) -> CollectorResult:
     if title and not title.lower().startswith("telegram: contact"):
         name = title.split("|")[0].strip() or None
 
+    # снимки-доказательства: страница профиля (+ публичная лента ниже)
+    from core.storage import put_snapshot
+
+    profile_snap = put_snapshot(job.case_id, "tg_profile", page.encode("utf-8", "ignore"))
+    artifacts = [profile_snap] if profile_snap else []
+
     res.facts.append(
         CollectorFact(
             kind="account.profile",
             value={"platform": "telegram", "handle": nick, "url": profile_url, "name": name},
             source_url=profile_url,
             confidence=0.85,
+            artifacts=artifacts,
         )
     )
     if meta.get("og:image"):
@@ -128,6 +135,11 @@ def run(job: CollectorInput) -> CollectorResult:
     # публичная лента (каналы/боты); у обычных юзеров — 404, это ок
     preview = _get(f"https://t.me/s/{nick}")
     if preview:
+        feed_snap = put_snapshot(job.case_id, "tg_feed", preview.encode("utf-8", "ignore"))
+        if feed_snap:
+            artifacts.append(feed_snap)
+            # обновляем артефакты у уже добавленного account.profile
+            res.facts[0].artifacts = artifacts
         messages = _parse_messages(preview)
         for msg in messages:
             res.facts.append(

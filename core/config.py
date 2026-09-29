@@ -67,3 +67,21 @@ FACE_MODEL_SFACE = (
     "https://raw.githubusercontent.com/opencv/opencv_zoo/main/models/"
     "face_recognition_sface/face_recognition_sface_2021dec.onnx"
 )
+
+# --- Снимки страниц (MinIO, Этап 2) ---
+# Пустой MINIO_ENDPOINT → file-режим: data/snapshots/ (dev, тесты без Docker).
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "").strip()
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "osint-snapshots")
+MINIO_SECURE = os.getenv("MINIO_SECURE", "0") == "1"
+SNAPSHOT_DIR = os.getenv("SNAPSHOT_DIR", "data/snapshots")
+SNAPSHOT_LIMIT_BYTES = _int("SNAPSHOT_LIMIT_BYTES", 5 * 1024 * 1024)
+
+# --- Полнотекстовый поиск (OpenSearch, Этап 2) ---
+# Пустой OPENSEARCH_URL → SQL-fallback (ILIKE) — работает без Docker.
+OPENSEARCH_URL = os.getenv("OPENSEARCH_URL", "").rstrip("/")
+OPENSEARCH_INDEX = os.getenv("OPENSEARCH_INDEX", "facts")
+OPENSEARCH_USER = os.getenv("OPENSEARCH_USER", "")
+OPENSEARCH_PASS = os.getenv("OPENSEARCH_PASS", "")
+SEARCH_LIMIT = _int("SEARCH_LIMIT", 50)

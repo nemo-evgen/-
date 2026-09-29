@@ -63,6 +63,7 @@ class FactOut(BaseModel):
     confidence: float
     captured_at: str
     job_id: int | None
+    artifacts: list[str] = Field(default_factory=list)
 
 
 class PersonOut(BaseModel):

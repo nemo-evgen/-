@@ -110,7 +110,19 @@
   </section>
 
   <section class="card">
-    <h2>4 · Досье</h2>
+    <h2>4 · Полный поиск по фактам</h2>
+    <div class="row2">
+      <div>
+        <input id="ft-q" placeholder="Иванов · Москва · университет · github… (Enter)"
+               onkeydown="if(event.key==='Enter')fulltext()">
+      </div>
+      <button onclick="fulltext()">Найти</button>
+    </div>
+    <div id="ft-results" class="muted" style="margin-top:10px"></div>
+  </section>
+
+  <section class="card">
+    <h2>5 · Досье</h2>
     <div id="dossier"><p class="muted">Кейс не выбран.</p></div>
   </section>
 
@@ -218,6 +230,30 @@ function factBody(f) {
   return escapeHtml(JSON.stringify(v)).slice(0, 400);
 }
 
+async function fulltext() {
+  const q = $('ft-q').value.trim();
+  if (!q) return;
+  const params = new URLSearchParams({q});
+  if (currentCase) params.set('case_id', String(currentCase));
+  const box = $('ft-results');
+  box.innerHTML = 'ищем…';
+  try {
+    const d = await fetch('/api/search?' + params).then(r => r.json());
+    if (!d.results || !d.results.length) {
+      box.innerHTML = `<span>Ничего не найдено <span class="muted">(бэкенд: ${escapeHtml(d.backend)})</span></span>`;
+      return;
+    }
+    box.innerHTML = `<div class="muted">бэкенд: ${escapeHtml(d.backend)} · найдено: ${d.results.length}</div>` +
+      d.results.map(r => `<div class="fact">
+        <b>${escapeHtml(r.kind)}</b> <span class="muted">· case #${r.case_id} · conf ${r.confidence}</span>
+        ${r.source_url && r.source_url.startsWith('http') ? ` · <a href="${escapeHtml(r.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}
+        <div>${escapeHtml(JSON.stringify(r.value)).slice(0, 300)}</div>
+      </div>`).join('');
+  } catch (e) {
+    box.innerHTML = `<span class="err">${escapeHtml(e.message)}</span>`;
+  }
+}
+
 async function loadDossier() {
   const sel = $('case-select');
   currentCase = sel.value ? Number(sel.value) : null;
@@ -248,6 +284,8 @@ async function loadDossier() {
       ${p.facts.map(f => `<div class="fact">
             <b>${escapeHtml(f.kind)}</b> <span class="muted">· conf ${f.confidence}</span>
             ${f.source_url && f.source_url.startsWith('http') ? ` · <a href="${escapeHtml(f.source_url)}" target="_blank" rel="noopener">источник</a>` : ''}
+            ${(f.artifacts || []).length ? ' · ' + f.artifacts.map(a =>
+              `<a href="/api/snapshots?ref=${encodeURIComponent(a)}" target="_blank" rel="noopener">📑 снимок</a>`).join(' · ') : ''}
             <div>${factBody(f)}</div>
           </div>`).join('')}
     </div>`).join('') : '<p class="muted">Пока пусто — запустите поиск.</p>';

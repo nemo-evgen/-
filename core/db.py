@@ -4,6 +4,7 @@ DATABASE_URL поддерживает postgres (прод) и sqlite (локал�
 """
 from __future__ import annotations
 
+import json
 import os
 from contextlib import contextmanager
 from typing import Iterator
@@ -16,6 +17,14 @@ from core.config import DATABASE_URL
 
 Base = declarative_base()
 
+
+def _json_dumps(value) -> str:
+    """ensure_ascii=False: кириллица в JSON хранится как есть → находится SQL LIKE
+    (SQL-fallback полнотекстового поиска). Документированный способ SA:
+    create_engine(json_serializer=...)."""
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
 _engine = None
 _SessionFactory: sessionmaker | None = None
 
@@ -23,8 +32,12 @@ _SessionFactory: sessionmaker | None = None
 def make_engine(url: str | None = None):
     url = url or DATABASE_URL
     if url.startswith("sqlite"):
-        return create_engine(url, connect_args={"check_same_thread": False})
-    return create_engine(url, pool_pre_ping=True)
+        return create_engine(
+            url,
+            connect_args={"check_same_thread": False},
+            json_serializer=_json_dumps,
+        )
+    return create_engine(url, pool_pre_ping=True, json_serializer=_json_dumps)
 
 
 def get_engine():

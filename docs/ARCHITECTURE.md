@@ -312,7 +312,7 @@ services:
 |---|---|---|
 | **0** ✅ | Репозиторий, согласованная архитектура | README, ARCHITECTURE, TOOLS |
 | **1** ✅ | `docker compose up` → первое досье | Ядро (API+Redis+PG+UI-мини), контракт коллектора, 4 коллектора: `vk_profile` (VK API + scrape-fallback), `tg_profile` (пассивный t.me), `dorks` (+авто-выполнение при ключе), `username` (maigret) |
-| **2** 🚧 | Полные сценарии S1–S3 | ✅ photo-collector: EXIF/GPS, DCT-pHash, обратные-ссылки, матчинг аватарок (pHash + локальный YuNet/SFace), аплоад-UI; ⬜ OpenSearch (полнотекст), MinIO-снимки страниц, авто-скриншоты |
+| **2** ✅ | Полные сценарии S1–S3 | photo-collector (EXIF/GPS, DCT-pHash, обратные-ссылки, pHash+лицо матчинг, аплоад-UI); снимки-доказательства (MinIO ↔ file-fallback, `artifacts` у фактов); полнотекст (OpenSearch ↔ SQL-fallback, `/api/search`) |
 | **3** | Сшивка сущностей | Entity Resolution + скоринг, граф связей (Neo4j или PG recursive), очередь «на проверку», полный UI |
 | **4** | Эксплуатация | RBAC, аудит-вью, метрики, бэкапы, плагины сообщества, опц. K8s |
 

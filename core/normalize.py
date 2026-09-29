@@ -107,6 +107,7 @@ def _store_fact(
             kind=fact.kind,
             value=fact.value,
             source_url=fact.source_url,
+            artifacts=list(fact.artifacts or []),
             captured_at=fact.captured_at or utcnow(),
             confidence=fact.confidence,
             payload_hash=h,

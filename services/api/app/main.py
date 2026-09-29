@@ -170,6 +170,7 @@ def get_dossier(case_id: int) -> schemas.DossierOut:
                 confidence=f.confidence,
                 captured_at=_iso(f.captured_at) or "",
                 job_id=f.job_id,
+                artifacts=f.artifacts or [],
             )
             if f.person_id:
                 facts_by_person.setdefault(f.person_id, []).append(out)
@@ -259,6 +260,29 @@ def get_job(job_id: int) -> schemas.JobOut:
         if job is None:
             raise HTTPException(404, "джоб не найден")
         return _job_out(job)
+
+
+# ---------- полнотекстовый поиск и снимки ----------
+@app.get("/api/search")
+def fulltext_search(q: str, case_id: int | None = None, limit: int = 50) -> dict:
+    """Поиск по всем фактам: OpenSearch (если включён) или SQL-fallback."""
+    from core.search import search as run_search
+
+    return run_search(q, case_id=case_id, size=min(limit, 200))
+
+
+@app.get("/api/snapshots")
+def get_snapshot(ref: str):
+    """Отдача снимка-доказательства по ref (file://… | minio://…)."""
+    from fastapi.responses import Response
+
+    from core.storage import open_snapshot
+
+    data_ctype = open_snapshot(ref)
+    if data_ctype is None:
+        raise HTTPException(404, "снимок не найден")
+    data, ctype = data_ctype
+    return Response(content=data, media_type=ctype)
 
 
 # ---------- UI ----------

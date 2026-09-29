@@ -29,6 +29,7 @@ class CollectorFact:
     source_url: str | None = None
     confidence: float = 0.7
     captured_at: dt.datetime = field(default_factory=utcnow)
+    artifacts: list[str] = field(default_factory=list)  # ref снимков: file:// | minio://
 
     def to_dict(self) -> dict:
         return {
@@ -37,6 +38,7 @@ class CollectorFact:
             "source_url": self.source_url,
             "confidence": self.confidence,
             "captured_at": self.captured_at.isoformat(),
+            "artifacts": self.artifacts,
         }
 
 

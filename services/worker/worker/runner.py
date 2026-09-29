@@ -16,7 +16,7 @@ from core import (  # noqa: F401  (регистрация коллекторов
 from core.collector_base import REGISTRY
 from core.contract import CollectorInput
 from core.db import init_db, session
-from core.models import AuditLog, SearchJob, utcnow
+from core.models import AuditLog, Fact, SearchJob, utcnow
 from core.normalize import ingest
 from core.routing import collectors_for
 
@@ -100,4 +100,17 @@ def _run(job_id: int) -> dict:
             )
         )
         s.flush()
+
+        # полнотекстовая индексация (best-effort; при выключенном OpenSearch — no-op)
+        if job.status == "done":
+            try:
+                from core.search import index_facts
+
+                new_facts = (
+                    s.query(Fact).filter(Fact.job_id == job.id).all()
+                )
+                index_facts(new_facts)
+            except Exception:  # noqa: BLE001 — поиск не должен ломать джобу
+                log.exception("indexing failed (job %s)", job_id)
+
         return {"status": job.status, "summary": summary, "warnings": warnings}

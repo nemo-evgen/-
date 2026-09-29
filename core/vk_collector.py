@@ -89,12 +89,24 @@ def _run_api(job: CollectorInput, url: str, handle: str) -> CollectorResult | No
     profile_url = f"https://vk.com/{domain}"
     name = f"{u.get('first_name', '')} {u.get('last_name', '')}".strip()
 
+    # снимок-доказательство: ответ API по профилю
+    from core.storage import put_snapshot
+
+    snap = put_snapshot(
+        job.case_id,
+        "vk_api_user",
+        __import__("json").dumps(u, ensure_ascii=False).encode("utf-8"),
+        suffix=".json",
+    )
+    artifacts = [snap] if snap else []
+
     res.facts.append(
         CollectorFact(
             kind="account.profile",
             value={"platform": "vk", "handle": domain, "url": profile_url, "name": name},
             source_url=profile_url,
             confidence=0.95,
+            artifacts=artifacts,
         )
     )
     if u.get("photo_200"):
@@ -239,12 +251,19 @@ def _run_scrape(job: CollectorInput, url: str, handle: str) -> CollectorResult:
 
     title = meta.get("og:title") or ""
     name = title.split("|")[0].strip() or None
+
+    from core.storage import put_snapshot
+
+    snap = put_snapshot(job.case_id, "vk_page", resp.text.encode("utf-8", "ignore"))
+    artifacts = [snap] if snap else []
+
     res.facts.append(
         CollectorFact(
             kind="account.profile",
             value={"platform": "vk", "handle": handle, "url": str(resp.url), "name": name},
             source_url=str(resp.url),
             confidence=0.85,
+            artifacts=artifacts,
         )
     )
     if meta.get("og:image"):
