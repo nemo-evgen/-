@@ -8,15 +8,15 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from core import config
 from core.db import init_db, session
 from core.models import Account, AuditLog, Case, Fact, Person, ReviewItem, SearchJob
 from core.routing import INPUT_TYPES, collectors_for
-from services.api.app import schemas
+from services.api.app import rbac, schemas
 from services.api.app.tasks_client import enqueue_search_job
 
 logging.basicConfig(level=logging.INFO)
@@ -25,9 +25,18 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(
     title="OSINT Person Search",
-    version="0.2.0",
+    version="0.3.0",
     description="Поиск информации об человеке из открытых источников (OSINT).",
 )
+
+
+@app.middleware("http")
+async def _rbac_middleware(request, call_next):
+    """Ролевой доступ по API_KEYS (см. services/api/app/rbac.py)."""
+    deny = rbac.enforce(request)
+    if deny is not None:
+        return deny
+    return await call_next(request)
 
 
 @app.on_event("startup")
@@ -115,8 +124,8 @@ def create_case(body: schemas.CaseCreate) -> schemas.CaseOut:
     with session() as s:
         case = Case(name=body.name.strip(), legal_basis=body.legal_basis)
         s.add(case)
-        s.add(AuditLog(action="case.created", detail={"name": case.name}))
         s.flush()
+        s.add(AuditLog(case_id=case.id, action="case.created", detail={"name": case.name}))
         return _case_out(case)
 
 
@@ -336,6 +345,129 @@ def get_snapshot(ref: str):
         raise HTTPException(404, "снимок не найден")
     data, ctype = data_ctype
     return Response(content=data, media_type=ctype)
+
+
+# ---------- аудит, метрики, бэкапы (Этап 4) ----------
+@app.get("/api/audit")
+def audit_log(case_id: int | None = None, limit: int = 100) -> dict:
+    """Журнал действий (просмотр — роль viewer)."""
+    limit = max(1, min(limit, 500))
+    with session() as s:
+        stmt = select(AuditLog)
+        if case_id is not None:
+            stmt = stmt.where(AuditLog.case_id == case_id)
+        rows = (
+            s.execute(stmt.order_by(AuditLog.id.desc()).limit(limit)).scalars().all()
+        )
+        return {
+            "entries": [
+                {
+                    "id": r.id,
+                    "case_id": r.case_id,
+                    "action": r.action,
+                    "detail": r.detail or {},
+                    "created_at": _iso(r.created_at),
+                }
+                for r in rows
+            ]
+        }
+
+
+@app.get("/metrics", response_class=Response)
+def metrics() -> Response:
+    """Prometheus text format (без аутентификации — по соглашению)."""
+    with session() as s:
+        jobs = dict(
+            s.execute(
+                select(SearchJob.status, func.count(SearchJob.id)).group_by(SearchJob.status)
+            ).all()
+        )
+        counts = {}
+        for label, model in (
+            ("cases", Case),
+            ("persons", Person),
+            ("facts", Fact),
+            ("accounts", Account),
+        ):
+            counts[label] = s.execute(select(func.count(model.id))).scalar() or 0
+        reviews_pending = (
+            s.execute(
+                select(func.count(ReviewItem.id)).where(ReviewItem.status == "pending")
+            ).scalar()
+            or 0
+        )
+        resolver_runs = (
+            s.execute(
+                select(func.count(AuditLog.id)).where(AuditLog.action == "resolver.run")
+            ).scalar()
+            or 0
+        )
+    lines = [
+        "# HELP osint_cases_total Кейсы в БД",
+        "# TYPE osint_cases_total gauge",
+        f"osint_cases_total {counts['cases']}",
+        "# HELP osint_jobs_total Джобы поиска по статусам",
+        "# TYPE osint_jobs_total gauge",
+    ]
+    for status in ("pending", "running", "done", "failed"):
+        lines.append(f'osint_jobs_total{{status="{status}"}} {jobs.get(status, 0)}')
+    lines += [
+        "# HELP osint_persons_total Сшитые сущности-люди",
+        "# TYPE osint_persons_total gauge",
+        f"osint_persons_total {counts['persons']}",
+        "# HELP osint_facts_total Факты",
+        "# TYPE osint_facts_total gauge",
+        f"osint_facts_total {counts['facts']}",
+        "# HELP osint_accounts_total Привязанные аккаунты",
+        "# TYPE osint_accounts_total gauge",
+        f"osint_accounts_total {counts['accounts']}",
+        "# HELP osint_reviews_pending Элементы очереди проверки, ожидающие решения",
+        "# TYPE osint_reviews_pending gauge",
+        f"osint_reviews_pending {reviews_pending}",
+        "# HELP osint_resolver_runs Прогоны entity resolution",
+        "# TYPE osint_resolver_runs counter",
+        f"osint_resolver_runs {resolver_runs}",
+    ]
+    return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
+
+
+@app.post("/api/admin/backup")
+def admin_backup() -> dict:
+    """Бэкап БД в backups/ (sqlite: online-backup API; postgres: scripts/backup.sh)."""
+    import sqlite3
+    from datetime import datetime
+
+    from core.db import get_engine
+
+    eng = get_engine()
+    if eng.dialect.name != "sqlite":
+        raise HTTPException(
+            400, "Postgres: используйте scripts/backup.sh (pg_dump)"
+        )
+    src_path = eng.url.database
+    if not src_path or src_path == ":memory:" or not Path(src_path).exists():
+        raise HTTPException(400, "sqlite-файл не найден — бэкап невозможен")
+
+    out_dir = Path("backups")
+    out_dir.mkdir(exist_ok=True)
+    dest = out_dir / f"osint-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
+    raw = eng.raw_connection()  # sqlite3.Connection (возвращается в пул при close)
+    dest_conn = None
+    try:
+        dest_conn = sqlite3.connect(dest)
+        raw.backup(dest_conn)  # online backup: консистентный снимок без остановки
+    finally:
+        if dest_conn is not None:
+            dest_conn.close()
+        raw.close()
+    with session() as s:
+        s.add(
+            AuditLog(
+                action="admin.backup",
+                detail={"file": dest.name, "bytes": dest.stat().st_size},
+            )
+        )
+    return {"file": dest.name, "bytes": dest.stat().st_size}
 
 
 # ---------- UI ----------

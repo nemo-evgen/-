@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: osint-api
+spec:
+  replicas: 1          # >1 только с общим storage для uploads/snapshots (PVC/NFS)
+  selector:
+    matchLabels: {app: osint-api}
+  template:
+    metadata:
+      labels: {app: osint-api}
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/example/osint-api:0.3   # СВОЙ образ
+          ports: [{containerPort: 8000}]
+          envFrom:
+            - configMapRef: {name: osint-config}
+            - secretRef: {name: osint-secrets}
+          volumeMounts:
+            - {name: data, mountPath: /app/data}
+          readinessProbe:
+            httpGet: {path: /healthz, port: 8000}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: 8000}
+            initialDelaySeconds: 15
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: osint-data}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: osint-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 10Gi}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: osint-api
+spec:
+  selector: {app: osint-api}
+  ports: [{port: 80, targetPort: 8000}]

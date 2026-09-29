@@ -1,0 +1,23 @@
+# Опциональный Ingress (нужен контроллер: nginx/traefik).
+# TLS — ваш сертификат (cert-manager и т.п.) ВНЕ этого репозитория.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: osint-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"   # загрузка фото
+spec:
+  rules:
+    - host: osint.example.com        # СВОЙ домен
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: osint-api
+                port: {number: 80}
+# TLS-блок (закомментировано до выпуска сертификата):
+#   tls:
+#     - hosts: [osint.example.com]
+#       secretName: osint-tls

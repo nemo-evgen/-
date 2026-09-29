@@ -1,0 +1,34 @@
+# OSINT Person Search — Kubernetes (Этап 4, опциональный способ развёртывания)
+#
+# Внимание: в этом репозитории манифесты — «эталонные»: они не прогонялись
+# в CI (в песочнице нет кластера). Считать их отправной точкой, не готовым
+# прод-развёртыванием. Протестировать локально: minikube / kind.
+#
+#   # 1. Образы (registry подставьте свой):
+#   docker build -f services/api/Dockerfile -t ghcr.io/example/osint-api:0.3 .
+#   docker build -f services/worker/Dockerfile -t ghcr.io/example/osint-worker:0.3 .
+#   docker push ghcr.io/example/osint-api:0.3 && docker push ghcr.io/example/osint-worker:0.3
+#
+#   # 2. Секреты:
+#   kubectl apply -f secret.example.yaml   # скопировать и заполнить своими!
+#
+#   # 3. Всё остальное:
+#   kubectl apply -f postgres.yaml -f redis.yaml -f api.yaml -f worker.yaml
+#
+#   # 4. Ingress (опционально, нужен ingress-контроллер):
+#   kubectl apply -f ingress.yaml
+#
+# Состав: api (FastAPI+UI), worker (Celery), postgres 16, redis 7.
+# OpenSearch/MinIO — сознательно вне этих манифестов: включайте их,
+# когда понадобится полнотекст и object-storage (см. docker-compose).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: osint-config
+data:
+  # пусто = открытый режим; для прода задать через secret!
+  DATABASE_URL: "postgresql+psycopg://osint:osint@postgres:5432/osint"
+  CELERY_BROKER_URL: "redis://redis:6379/0"
+  UPLOAD_DIR: "/app/data/uploads"
+  SNAPSHOT_DIR: "/app/data/snapshots"
+  MODELS_DIR: "/app/models"

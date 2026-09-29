@@ -48,6 +48,10 @@
 <header>
   <h1>🕵 OSINT Person Search</h1>
   <span>MVP · сбор из открытых источников · кейсы, джобы, досье</span>
+  <span class="muted" style="margin-left:auto">API-ключ
+    <input id="api-key" type="password" placeholder="если задан API_KEYS"
+           style="width:170px" oninput="localStorage.setItem('osint_api_key', this.value.trim())">
+  </span>
 </header>
 <main>
 
@@ -135,15 +139,37 @@
     <div id="dossier"><p class="muted">Кейс не выбран.</p></div>
   </section>
 
+  <section class="card">
+    <h2>6 · Журнал аудита</h2>
+    <div style="margin-bottom:6px">
+      <button class="ghost" onclick="loadAudit()">⟳ Обновить</button>
+      <label class="muted" style="margin-left:8px">
+        <input type="checkbox" id="audit-all" checked> все кейсы (без фильтра)</label>
+    </div>
+    <div id="audit-box"><p class="muted">Нажмите «Обновить» — последние 50 записей.</p></div>
+  </section>
+
 </main>
 
 <script>
 const $ = id => document.getElementById(id);
-const api = async (path, opts) => {
-  const r = await fetch(path, {headers:{'Content-Type':'application/json'}, ...opts});
+const authHeaders = () => {
+  const k = localStorage.getItem('osint_api_key') || '';
+  const h = {'Content-Type': 'application/json'};
+  if (k) h['X-API-Key'] = k;
+  return h;
+};
+const api = async (path, opts = {}) => {
+  const r = await fetch(path, {...opts, headers: {...authHeaders(), ...(opts.headers || {})}});
   if (!r.ok) throw new Error((await r.json()).detail || r.status);
   return r.json();
 };
+// восстановить ключ из localStorage
+(() => {
+  const k = localStorage.getItem('osint_api_key') || '';
+  const el = document.getElementById('api-key');
+  if (el && k) el.value = k;
+})();
 let currentCase = null;
 
 function toggleHints() {
@@ -163,7 +189,9 @@ async function uploadPhoto() {
   const fd = new FormData();
   fd.append('file', input.files[0]);
   try {
-    const r = await fetch(`/api/cases/${currentCase}/photos`, {method: 'POST', body: fd});
+    const k = localStorage.getItem('osint_api_key') || '';
+    const r = await fetch(`/api/cases/${currentCase}/photos`,
+      {method: 'POST', body: fd, headers: k ? {'X-API-Key': k} : {}});
     if (!r.ok) {
       const d = await r.json().catch(() => ({}));
       throw new Error(d.detail || r.status);
@@ -247,7 +275,7 @@ async function fulltext() {
   const box = $('ft-results');
   box.innerHTML = 'ищем…';
   try {
-    const d = await fetch('/api/search?' + params).then(r => r.json());
+    const d = await api('/api/search?' + params);
     if (!d.results || !d.results.length) {
       box.innerHTML = `<span>Ничего не найдено <span class="muted">(бэкенд: ${escapeHtml(d.backend)})</span></span>`;
       return;
@@ -287,11 +315,9 @@ function renderReviews(reviews, persons) {
 
 async function decideReview(id, action) {
   try {
-    const r = await fetch(`/api/reviews/${id}/decision`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({action}),
+    await api(`/api/reviews/${id}/decision`, {
+      method: 'POST', body: JSON.stringify({action}),
     });
-    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || r.status); }
     await loadDossier();
   } catch (e) { alert(e.message); }
 }
@@ -299,8 +325,7 @@ async function decideReview(id, action) {
 async function recalcResolve() {
   if (!currentCase) return;
   try {
-    const r = await fetch(`/api/cases/${currentCase}/resolve`, {method: 'POST'});
-    if (!r.ok) throw new Error('resolve failed');
+    await api(`/api/cases/${currentCase}/resolve`, {method: 'POST'});
     await loadDossier();
   } catch (e) { alert(e.message); }
 }
@@ -312,7 +337,7 @@ let gPos = {};
 async function loadGraph() {
   if (!currentCase) { gData = {nodes: [], edges: []}; drawGraph(); return; }
   try {
-    gData = await fetch(`/api/cases/${currentCase}/graph`).then(r => r.json());
+    gData = await api(`/api/cases/${currentCase}/graph`);
   } catch (e) { gData = {nodes: [], edges: []}; }
   initGraphPos();
   drawGraph();
@@ -391,6 +416,27 @@ function drawGraph() {
     ctx.fillText(nd.label || '', p.x + 15, p.y + 4);
   });
 }
+
+async function loadAudit() {
+  const box = $('audit-box');
+  box.innerHTML = '<p class="muted">загрузка…</p>';
+  try {
+    const all = $('audit-all').checked;
+    const q = (!all && currentCase) ? `?case_id=${currentCase}&limit=50` : '?limit=50';
+    const d = await api('/api/audit' + q);
+    box.innerHTML = !d.entries.length ? '<p class="muted">Записей нет</p>' :
+      `<table style="width:100%;font-size:12px;border-collapse:collapse">
+        <thead><tr style="text-align:left;border-bottom:1px solid #243447">
+          <th>#</th><th>когда</th><th>действие</th><th>детали</th></tr></thead><tbody>` +
+      d.entries.map(e => `<tr style="border-bottom:1px solid #16202b">
+        <td class="muted">${e.id}</td>
+        <td class="muted">${(e.created_at || '').replace('T', ' ').slice(0, 19)}</td>
+        <td>${escapeHtml(e.action)}${e.case_id != null ? ` <span class="muted">· case#${e.case_id}</span>` : ''}</td>
+        <td class="muted">${escapeHtml(JSON.stringify(e.detail)).slice(0, 160)}</td></tr>`).join('') +
+      '</tbody></table>';
+  } catch (e) { box.innerHTML = `<span class="err">${escapeHtml(e.message)}</span>`; }
+}
+loadAudit();  // показать журнал сразу при открытии UI
 
 async function loadDossier() {
   const sel = $('case-select');

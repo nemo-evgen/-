@@ -41,6 +41,7 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       GOOGLE_CSE_ID: ${GOOGLE_CSE_ID:-}
       DORK_MAX_EXEC: ${DORK_MAX_EXEC:-10}
+      API_KEYS: ${API_KEYS:-}
       UPLOAD_DIR: /app/data/uploads
       MODELS_DIR: /app/models
       SNAPSHOT_DIR: /app/data/snapshots
@@ -51,6 +52,7 @@ services:
     volumes:
       - ./data/uploads:/app/data/uploads
       - ./data/snapshots:/app/data/snapshots   # file-режим снимков (fallback)
+      - ./backups:/app/backups                 # БЭКАПЫ БД (Этап 4, admin)
     depends_on:
       postgres:
         condition: service_healthy

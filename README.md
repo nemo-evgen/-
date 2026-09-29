@@ -4,9 +4,9 @@
 
 Полигональная OSINT-платформа для поиска информации о человеке по открытым источникам. Система принимает разрозненные идентификаторы (Telegram, VK, фотографию, ФИО + возраст + город + университет) и собирает, нормализует и связывает воедино всё, что человек опубликовал публично.
 
-## Статус: Этапы 0–3 ✅
+## Статус: Этапы 0–4 ✅
 
-Реализовано и проверено (`tests/smoke_runner.py`, `tests/test_collectors.py`, `tests/test_photo.py`, `tests/test_storage_search.py`):
+Реализовано и проверено (`tests/smoke_runner.py`, `tests/test_collectors.py`, `tests/test_photo.py`, `tests/test_storage_search.py`, `tests/test_resolver.py`, `tests/test_rbac.py`):
 
 - ✅ `docker compose up` → API + мини-UI кейсов на `http://localhost:8000`
 - ✅ Кейсы → поисковые джобы → очередь (Redis/Celery) → коллекторы → нормализация → досье
@@ -30,6 +30,11 @@
   в `Person.meta.signals`, граф связей (друзья → таблица `links` + UI-канвас),
   **очередь проверки**: сильные face- и точные pHash-совпадения между разными
   людьми → исследователь решает «сшить/отклонить» (human-in-the-loop)
+- ✅ **Эксплуатация (Этап 4)**: RBAC через `API_KEYS` (viewer/analyst/admin,
+  заголовок `X-API-Key`), журнал аудита в UI (`GET /api/audit`),
+  Prometheus-метрики (`GET /metrics`), бэкапы БД (`POST /api/admin/backup`
+  для sqlite / `scripts/backup.sh` для postgres), эталонные K8s-манифесты
+  (`deploy/k8s/`)
 - ✅ Аудит запусков, идемпотентность джоб, дедупликация фактов
 
 ## Быстрый старт
@@ -75,9 +80,11 @@ export PYTHONPATH=$PWD:$PWD/services/worker
 │   ├── vk_collector.py, dorks_collector.py, username_collector.py
 │   └── collector_base.py       # реестр плагинов
 ├── services/
-│   ├── api/                    # FastAPI-шлюз + static/index.html (мини-UI)
+│   ├── api/                    # FastAPI-шлюз + static/index.html (мини-UI) + rbac.py
 │   └── worker/                 # Celery-воркер: runner + задачи
-├── tests/smoke_runner.py       # смоук-тест без Docker (sqlite)
+├── scripts/backup.sh           # бэкап БД: sqlite online-backup / pg_dump
+├── deploy/k8s/                 # эталонные манифесты Kubernetes (Этап 4)
+├── tests/                      # смоук + юниты (collectors/photo/search/resolver/rbac)
 └── docs/
     ├── ARCHITECTURE.md         # архитектура, конвейеры, модель данных, роадмап
     └── TOOLS.md                # каталог OSINT-инструментов (лицензии, Docker)
@@ -97,6 +104,9 @@ export PYTHONPATH=$PWD:$PWD/services/worker
 | `GET` | `/api/cases/{id}/graph` | узлы и рёбра графа связей для UI |
 | `POST` | `/api/reviews/{id}/decision` | решение исследователя `{action: approve\|reject}` |
 | `GET` | `/api/cases/{id}` | досье: джобы + люди + аккаунты + факты + ожидающие проверки |
+| `GET` | `/api/audit?case_id=&limit=` | журнал действий исследователя (viewer) |
+| `GET` | `/metrics` | Prometheus-метрики (без аутентификации — по соглашению) |
+| `POST` | `/api/admin/backup` | снимок БД в `backups/` (только admin; sqlite) |
 | `GET` | `/api/jobs/{id}` | статус джобы |
 | `GET` | `/healthz` | здоровье |
 | `GET` | `/docs` | Swagger (FastAPI) |
@@ -105,7 +115,32 @@ export PYTHONPATH=$PWD:$PWD/services/worker
 
 - **Этап 2** ✅: photo-collector, снимки-доказательства (MinIO/file), полнотекст (OpenSearch/SQL)
 - **Этап 3** ✅: entity resolution (автомердж + скоринг со сигналами), граф связей, очередь проверки (approve/reject) в UI
-- **Этап 4**: RBAC, аудит-вью, метрики, бэкапы, K8s
+- **Этап 4** ✅: RBAC (API_KEYS), журнал аудита в UI, метрики Prometheus, бэкапы, K8s-манифесты (`deploy/k8s/`, эталонные — в песочнице кластера не гонялись)
+- **Дальше**: плагины сообщества, прогон K8s на kind/minikube, доведение эксплуатационных сценариев (вебхуки алертов, экспорт досье)
+
+## Доступ и RBAC (Этап 4)
+
+Задаётся одной переменной (в `.env` для compose или окружении):
+
+```bash
+API_KEYS=admin:секрет1,analyst:секрет2,viewer:секрет3
+```
+
+- **viewer** — только чтение (GET);
+- **analyst** — + запуск поисков, фото, resolve, решения в очереди проверки;
+- **admin** — + `/api/admin/*` (бэкапы).
+- Ключ передаётся заголовком `X-API-Key` (или `?api_key=` для curl); в UI —
+  поле «API-ключ» в шапке (сохраняется в localStorage).
+- **`API_KEYS` пуст → открытый режим** (удобно для разработки и тестов).
+- Без ключа при включённом RBAC → `401`; недостаточная роль → `403`.
+- Публичны без ключа: `/`, `/static`, `/healthz`, `/metrics`, `/docs`.
+
+```bash
+curl -H "X-API-Key: секрет3" localhost:8000/api/cases            # viewer: 200
+curl -X POST -H "X-API-Key: секрет3" localhost:8000/api/cases    # viewer: 403
+curl -X POST -H "X-API-Key: секрет1" localhost:8000/api/admin/backup
+./scripts/backup.sh          # cron/ручной бэкап: sqlite снимок или pg_dump
+```
 
 ## Правовые основы
 

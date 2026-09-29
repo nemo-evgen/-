@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: osint-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: osint-worker}
+  template:
+    metadata:
+      labels: {app: osint-worker}
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/example/osint-worker:0.3   # СВОЙ образ
+          envFrom:
+            - configMapRef: {name: osint-config}
+            - secretRef: {name: osint-secrets}
+          volumeMounts:
+            - {name: data, mountPath: /app/data}
+            - {name: models, mountPath: /app/models}
+          # worker'у нужен общий с api storage для uploads/snapshots:
+          # в проде — ReadWriteMany/NFS или object-storage (MinIO/S3)
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: osint-data}
+        - name: models
+          emptyDir: {}   # ONNX-модели лиц качаются при старте; лучше PVC/образ

@@ -303,6 +303,7 @@ services:
 3. **Данные по минимуму**: персональные данные — в объёме кейса; экспорт — по правам роли; удаление кейса каскадно чистит Person/Fact/Photo.
 4. **Правовое основание кейса** — обязательное поле Case (152-ФЗ, GDPR при нерезидентах ЕС).
 5. **Ethics-режим в README и UI**: стартовый экран с условием использования только по назначению; активные методы (Telethon от лица аккаунта) — opt-in.
+6. **RBAC (Этап 4)**: `API_KEYS=admin:…,analyst:…,viewer:…` → middleware `services/api/app/rbac.py` (401 без/неверный ключ, 403 недостаточная роль); `GET` — viewer+, `POST` — analyst+, `/api/admin/*` — admin; ключ в `X-API-Key` или `?api_key=`; пустые `API_KEYS` = открытый режим (dev). Публичны: UI/статика, `/healthz`, `/metrics`, `/docs`.
 
 ---
 
@@ -314,7 +315,7 @@ services:
 | **1** ✅ | `docker compose up` → первое досье | Ядро (API+Redis+PG+UI-мини), контракт коллектора, 4 коллектора: `vk_profile` (VK API + scrape-fallback), `tg_profile` (пассивный t.me), `dorks` (+авто-выполнение при ключе), `username` (maigret) |
 | **2** ✅ | Полные сценарии S1–S3 | photo-collector (EXIF/GPS, DCT-pHash, обратные-ссылки, pHash+лицо матчинг, аплоад-UI); снимки-доказательства (MinIO ↔ file-fallback, `artifacts` у фактов); полнотекст (OpenSearch ↔ SQL-fallback, `/api/search`) |
 | **3** ✅ | Сшивка сущностей | Entity Resolution + скоринг (`core/resolver.py`: автомердж по нормализованному имени, прозрачные сигналы в `Person.meta.signals`), граф связей (PG/SQLite `links` + UI-канвас), очередь «на проверку» (`review_items`: face/pHash → approve/reject, human-in-the-loop), эндпоинты `/resolve`, `/graph`, `/decision` |
-| **4** | Эксплуатация | RBAC, аудит-вью, метрики, бэкапы, плагины сообщества, опц. K8s |
+| **4** ✅ | Эксплуатация | RBAC (`API_KEYS`: viewer/analyst/admin + middleware 401/403), аудит-вью (`GET /api/audit` + карточка в UI), метрики `/metrics` (Prometheus text), бэкапы (`POST /api/admin/backup` — sqlite online-backup, `scripts/backup.sh` — pg_dump), K8s-манифесты `deploy/k8s/` (эталонные, без прогона на кластере) · *плагины сообщества — вне Этапа 4* |
 
 ### Принятые решения (согласовано 2026-09-29)
 
