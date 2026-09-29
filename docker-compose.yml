@@ -1,5 +1,7 @@
-# OSINT Person Search — Этап 1 (скелет + мини-UI)
-# Запуск: docker compose up -d --build  →  UI: http://localhost:8000
+# OSINT Person Search — Этап 4 (API+UI, коллекторы, RBAC, бэкапы)
+# Запуск:  docker compose up -d --build  →  UI: http://localhost:8000
+# Опционально (opensearch+minio):  docker compose --profile full up -d
+#   + в .env задать OPENSEARCH_URL=http://opensearch:9200 и MINIO_ENDPOINT=minio:9000
 name: osint-person-search
 
 services:
@@ -45,8 +47,12 @@ services:
       UPLOAD_DIR: /app/data/uploads
       MODELS_DIR: /app/models
       SNAPSHOT_DIR: /app/data/snapshots
-      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      # Пусто по умолчанию → SQL-fallback поиска + file-режим снимков:
+      # стек работает без opensearch/minio. Для профиля full задать в .env:
+      #   OPENSEARCH_URL=http://opensearch:9200
+      #   MINIO_ENDPOINT=minio:9000
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
     volumes:
@@ -58,10 +64,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      opensearch:
-        condition: service_started
-      minio:
-        condition: service_started
 
   worker:
     build:
@@ -77,14 +79,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      opensearch:
-        condition: service_started
-      minio:
-        condition: service_started
 
-  # Полнотекстовый поиск (дев-профиль; без него — SQL-fallback)
+  # Полнотекстовый поиск — профиль full (без него приложение живёт на SQL-fallback)
   opensearch:
     image: opensearchproject/opensearch:2
+    profiles: ["full"]
     environment:
       discovery.type: single-node
       DISABLE_SECURITY_PLUGIN: "true"
@@ -97,10 +96,19 @@ services:
       timeout: 5s
       retries: 20
 
-  # Хранилище снимков-доказательств (дев; без него — file-режим)
+  # Хранилище снимков-доказательств — профиль full (без него file-режим).
+  # ВНИМАНИЕ: minio/minio удалён с Docker Hub (11.09.2026), Quay закрыл
+  # анонимные pull (24.09.2026) — образ MinIO больше нельзя взять ниоткуда.
+  # Вариант ниже: поддерживаемая сборка Chainguard (общается S3 API как minio).
+  # Запасной вариант — SeaweedFS (S3-совместим):
+  #   image: chrislusf/seaweedfs:4.47
+  #   command: server -s3 -s3.port=9000 -master.volumeSizeLimitMB=100
+  #   environment: {S3_ACCESS_KEY: minioadmin, S3_SECRET_KEY: minioadmin}
   minio:
-    image: minio/minio:latest
+    image: cgr.dev/chainguard/minio
+    user: "0:0"          # иначе не пишет в /data (corporate non-root image)
     command: server /data --console-address ":9001"
+    profiles: ["full"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}

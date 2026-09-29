@@ -21,9 +21,9 @@
     pHash-матчи + локальная face-верификация (YuNet+SFace, ONNX скачивается в `models/`,
     без внешних face-сервисов; при недоступности сетей — честный warning)
 - ✅ Модель: Case / SearchJob / Person / Account / Fact / AuditLog / Photo
-- ✅ **Снимки-доказательства**: коллекторы сохраняют сырой HTML/JSON (MinIO в compose,
-  file-режим без Docker), у фактов — `artifacts`, в UI кнопка «📑 снимок»
-- ✅ **Полнотекстовый поиск**: OpenSearch (в compose) с SQL-fallback — эндпоинт
+- ✅ **Снимки-доказательства**: коллекторы сохраняют сырой HTML/JSON (file-режим по
+  умолчанию; MinIO — в профиле `compose full`), у фактов — `artifacts`, в UI кнопка «📑 снимок»
+- ✅ **Полнотекстовый поиск**: SQL-fallback по умолчанию; OpenSearch — в профиле `compose full` — эндпоинт
   `/api/search` + карточка «Полный поиск по фактам» в UI (работает по кириллице)
 - ✅ **Entity resolution (Этап 3)**: авто-мердж людей с одинаковым нормализованным
   именем, скоринг по подсказкам (ФИО/город/вуз/возраст) с прозрачными сигналами
@@ -44,6 +44,13 @@ git clone <this-repo> && cd <repo>
 docker compose up -d --build
 # → UI: http://localhost:8000   API-доки: http://localhost:8000/docs
 ```
+
+> По умолчанию поднимаются только postgres, redis, api, worker — этого
+> достаточно: полнотекстовый поиск работает на SQL-fallback, снимки-доказательства
+> в файлы (`data/snapshots`). Опциональные opensearch+minio — профиль `full`:
+> `docker compose --profile full up -d` (+ `OPENSEARCH_URL`/`MINIO_ENDPOINT` в `.env`);
+> образ minio/minio удалён с Docker Hub (09.2026), поэтому в профиле используется
+> сборка Chainguard (`cgr.dev/chainguard/minio`).
 
 Далее в UI: создайте **кейс** (укажите правовое основание) → выберите тип входа → **Запустить поиск** → смотрите досье (аккаунты + факты со ссылками-источниками).
 
