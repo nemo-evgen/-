@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from core import config
 from core.db import init_db, session
-from core.models import Account, AuditLog, Case, Fact, Person, SearchJob
+from core.models import Account, AuditLog, Case, Fact, Person, ReviewItem, SearchJob
 from core.routing import INPUT_TYPES, collectors_for
 from services.api.app import schemas
 from services.api.app.tasks_client import enqueue_search_job
@@ -182,6 +182,7 @@ def get_dossier(case_id: int) -> schemas.DossierOut:
                 id=p.id,
                 display_name=p.display_name,
                 confidence=p.confidence,
+                meta=p.meta or {},
                 accounts=acc_by_person.get(p.id, []),
                 facts=facts_by_person.get(p.id, []),
             )
@@ -192,11 +193,63 @@ def get_dossier(case_id: int) -> schemas.DossierOut:
             person_outs[0].accounts.extend(acc_orphan)
             person_outs[0].facts.extend(facts_orphan)
 
+        reviews = (
+            s.query(ReviewItem)
+            .filter(ReviewItem.case_id == case_id, ReviewItem.status == "pending")
+            .order_by(ReviewItem.id.desc())
+            .all()
+        )
+        review_outs = [
+            schemas.ReviewOut(
+                id=r.id,
+                kind=r.kind,
+                payload=r.payload or {},
+                status=r.status,
+                created_at=_iso(r.created_at) or "",
+            )
+            for r in reviews
+        ]
+
         return schemas.DossierOut(
             case=_case_out(case),
             jobs=[_job_out(j) for j in jobs],
             persons=person_outs,
+            reviews=review_outs,
         )
+
+
+# ---------- entity resolution / граф / проверки ----------
+@app.post("/api/cases/{case_id}/resolve")
+def resolve_case(case_id: int) -> dict:
+    """Ручной запуск сшивки: мердж, скоринг, граф, очередь проверки."""
+    from core.resolver import resolve_case as run_resolve
+
+    with session() as s:
+        if s.get(Case, case_id) is None:
+            raise HTTPException(404, "кейс не найден")
+    return run_resolve(case_id)
+
+
+@app.get("/api/cases/{case_id}/graph")
+def get_graph(case_id: int) -> dict:
+    from core.resolver import graph_payload
+
+    with session() as s:
+        if s.get(Case, case_id) is None:
+            raise HTTPException(404, "кейс не найден")
+    return graph_payload(case_id)
+
+
+@app.post("/api/reviews/{review_id}/decision")
+def review_decision(review_id: int, body: schemas.DecisionIn) -> dict:
+    from core.resolver import decide_review
+
+    try:
+        return decide_review(review_id, body.action)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 # ---------- searches ----------

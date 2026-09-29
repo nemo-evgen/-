@@ -70,11 +70,25 @@ class PersonOut(BaseModel):
     id: int
     display_name: str
     confidence: float
+    meta: dict = Field(default_factory=dict)
     accounts: list[AccountOut]
     facts: list[FactOut]
+
+
+class ReviewOut(BaseModel):
+    id: int
+    kind: str
+    payload: dict
+    status: str
+    created_at: str
 
 
 class DossierOut(BaseModel):
     case: CaseOut
     jobs: list[JobOut]
     persons: list[PersonOut]
+    reviews: list[ReviewOut] = Field(default_factory=list)
+
+
+class DecisionIn(BaseModel):
+    action: Literal["approve", "reject"]

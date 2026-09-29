@@ -92,6 +92,20 @@ def _run(job_id: int) -> dict:
             job.status = "failed"
             job.error = "; ".join(warnings) or "нет результатов: неизвестный вход"
         job.finished_at = utcnow()
+        # резолвер работает в отдельной сессии → данные джобы должны быть закоммичены
+        s.commit()
+
+        # entity resolution: мердж/скоринг/граф/очередь проверки (best-effort)
+        if job.status == "done":
+            try:
+                from core.resolver import resolve_case
+
+                res_summary = resolve_case(job.case_id)
+                summary = {**summary, "resolver": res_summary}
+                job.summary = summary
+            except Exception:  # noqa: BLE001 — резолвер не должен ломать джобу
+                log.exception("resolver failed (job %s)", job_id)
+
         s.add(
             AuditLog(
                 case_id=job.case_id,

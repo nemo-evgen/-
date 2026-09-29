@@ -1,6 +1,6 @@
 # Архитектура системы «OSINT Person Search»
 
-Статус: проект (Этап 0) · Автор: совместно с ассистентом · Обновлено: 2026-09-29
+Статус: проект (Этап 3 ✅) · Автор: совместно с ассистентом · Обновлено: 2026-09-29
 
 ---
 
@@ -313,7 +313,7 @@ services:
 | **0** ✅ | Репозиторий, согласованная архитектура | README, ARCHITECTURE, TOOLS |
 | **1** ✅ | `docker compose up` → первое досье | Ядро (API+Redis+PG+UI-мини), контракт коллектора, 4 коллектора: `vk_profile` (VK API + scrape-fallback), `tg_profile` (пассивный t.me), `dorks` (+авто-выполнение при ключе), `username` (maigret) |
 | **2** ✅ | Полные сценарии S1–S3 | photo-collector (EXIF/GPS, DCT-pHash, обратные-ссылки, pHash+лицо матчинг, аплоад-UI); снимки-доказательства (MinIO ↔ file-fallback, `artifacts` у фактов); полнотекст (OpenSearch ↔ SQL-fallback, `/api/search`) |
-| **3** | Сшивка сущностей | Entity Resolution + скоринг, граф связей (Neo4j или PG recursive), очередь «на проверку», полный UI |
+| **3** ✅ | Сшивка сущностей | Entity Resolution + скоринг (`core/resolver.py`: автомердж по нормализованному имени, прозрачные сигналы в `Person.meta.signals`), граф связей (PG/SQLite `links` + UI-канвас), очередь «на проверку» (`review_items`: face/pHash → approve/reject, human-in-the-loop), эндпоинты `/resolve`, `/graph`, `/decision` |
 | **4** | Эксплуатация | RBAC, аудит-вью, метрики, бэкапы, плагины сообщества, опц. K8s |
 
 ### Принятые решения (согласовано 2026-09-29)

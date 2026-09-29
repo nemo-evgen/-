@@ -32,11 +32,19 @@ def _find_or_create_person(
     confidence: float = 0.5,
     meta: dict | None = None,
 ) -> Person:
-    person = session.execute(
-        select(Person).where(Person.case_id == case_id, Person.display_name == display_name)
-    ).scalar_one_or_none()
-    if person:
-        return person
+    """Матч по нормализованному имени (регистр/пробелы/ё не мешают)."""
+    from core.resolver import _norm_name, _is_placeholder
+
+    wanted = _norm_name(display_name)
+    if wanted and not _is_placeholder(display_name):
+        existing = (
+            session.execute(select(Person).where(Person.case_id == case_id))
+            .scalars()
+            .all()
+        )
+        for p in existing:
+            if _norm_name(p.display_name) == wanted:
+                return p
     person = Person(
         case_id=case_id,
         display_name=display_name or "—",

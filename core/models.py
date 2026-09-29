@@ -142,3 +142,44 @@ class Photo(Base):
     face_embedding: Mapped[list | None] = mapped_column(JSON, nullable=True)
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Link(Base):
+    """Граф связей: человек → друг/группа (из graph.friend и не только)."""
+
+    __tablename__ = "links"
+    __table_args__ = (
+        UniqueConstraint("case_id", "src_person_id", "kind", "dst_platform", "dst_handle",
+                         name="uq_link"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    case_id: Mapped[int] = mapped_column(ForeignKey("cases.id"), index=True)
+    src_person_id: Mapped[int] = mapped_column(ForeignKey("persons.id"), index=True)
+    dst_person_id: Mapped[int | None] = mapped_column(ForeignKey("persons.id"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(32), default="friend")  # friend | group_member
+    dst_platform: Mapped[str] = mapped_column(String(100), default="")
+    dst_handle: Mapped[str] = mapped_column(String(300), default="")
+    dst_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    dst_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    weight: Mapped[float] = mapped_column(Float, default=0.5)
+    fact_id: Mapped[int | None] = mapped_column(ForeignKey("facts.id"), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ReviewItem(Base):
+    """Очередь проверки исследователем (human-in-the-loop)."""
+
+    __tablename__ = "review_items"
+    __table_args__ = (
+        UniqueConstraint("case_id", "kind", "payload_hash", name="uq_review"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    case_id: Mapped[int] = mapped_column(ForeignKey("cases.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))  # person_merge | face_link | photo_link
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending|approved|rejected
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)

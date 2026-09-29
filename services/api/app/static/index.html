@@ -123,6 +123,15 @@
 
   <section class="card">
     <h2>5 · Досье</h2>
+    <div id="reviews"></div>
+    <div style="margin:6px 0 12px">
+      <canvas id="graph-canvas" height="380"
+              style="width:100%;background:#0c1116;border-radius:8px;display:block"></canvas>
+      <div class="muted" style="margin-top:4px">
+        Граф связей (друзья →) ·
+        <a href="#" onclick="recalcResolve();return false">пересчитать сшивку</a>
+      </div>
+    </div>
     <div id="dossier"><p class="muted">Кейс не выбран.</p></div>
   </section>
 
@@ -254,14 +263,146 @@ async function fulltext() {
   }
 }
 
+function renderReviews(reviews, persons) {
+  const box = $('reviews');
+  if (!reviews || !reviews.length) { box.innerHTML = ''; return; }
+  const nameOf = id => (persons.find(p => p.id === id) || {}).display_name || `#${id}`;
+  const label = r => {
+    if (r.kind === 'person_merge') return 'Похожие профили';
+    if (r.kind === 'face_link') return `Совпадение лица (cosine=${r.payload.cosine ?? '?'})`;
+    if (r.kind === 'photo_link') return 'Идентичные фото (pHash=0)';
+    return r.kind;
+  };
+  box.innerHTML = `<div class="muted" style="margin-bottom:6px">⚠ Требуют решения исследователя: ${reviews.length}</div>` +
+    reviews.map(r => `<div class="fact">
+      <b>${escapeHtml(label(r))}</b> <span class="muted">· ${escapeHtml(r.kind)}</span>
+      <div>${escapeHtml(nameOf(r.payload.src_person_id))} ↔ ${escapeHtml(nameOf(r.payload.dst_person_id))}
+        ${r.payload.target ? `<span class="muted">(${escapeHtml(String(r.payload.target)).slice(0, 80)})</span>` : ''}</div>
+      <div style="margin-top:6px">
+        <button class="ghost" onclick="decideReview(${r.id},'approve')">✓ Сшить</button>
+        <button class="ghost" onclick="decideReview(${r.id},'reject')">✗ Отклонить</button>
+      </div>
+    </div>`).join('');
+}
+
+async function decideReview(id, action) {
+  try {
+    const r = await fetch(`/api/reviews/${id}/decision`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action}),
+    });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || r.status); }
+    await loadDossier();
+  } catch (e) { alert(e.message); }
+}
+
+async function recalcResolve() {
+  if (!currentCase) return;
+  try {
+    const r = await fetch(`/api/cases/${currentCase}/resolve`, {method: 'POST'});
+    if (!r.ok) throw new Error('resolve failed');
+    await loadDossier();
+  } catch (e) { alert(e.message); }
+}
+
+// ---------- граф ----------
+let gData = {nodes: [], edges: []};
+let gPos = {};
+
+async function loadGraph() {
+  if (!currentCase) { gData = {nodes: [], edges: []}; drawGraph(); return; }
+  try {
+    gData = await fetch(`/api/cases/${currentCase}/graph`).then(r => r.json());
+  } catch (e) { gData = {nodes: [], edges: []}; }
+  initGraphPos();
+  drawGraph();
+}
+
+function initGraphPos() {
+  gPos = {};
+  const n = gData.nodes.length || 1;
+  gData.nodes.forEach((node, i) => {
+    const a = (i / n) * Math.PI * 2;
+    const r = node.type === 'person' ? 90 : 170;
+    gPos[node.id] = {
+      x: 400 + r * Math.cos(a) + (Math.random() - 0.5) * 30,
+      y: 190 + r * Math.sin(a) + (Math.random() - 0.5) * 30,
+      vx: 0, vy: 0,
+    };
+  });
+}
+
+function drawGraph() {
+  const cv = $('graph-canvas');
+  if (!cv) return;
+  const w = cv.clientWidth || 800, h = 380;
+  cv.width = w;
+  const ctx = cv.getContext('2d');
+  // физика: несколько итераций пружин/отталкивания
+  const nodes = gData.nodes, edges = gData.edges;
+  if (nodes.length) {
+    for (let it = 0; it < 120; it++) {
+      for (let i = 0; i < nodes.length; i++) {
+        const a = gPos[nodes[i].id]; if (!a) continue;
+        for (let j = i + 1; j < nodes.length; j++) {
+          const b = gPos[nodes[j].id]; if (!b) continue;
+          let dx = a.x - b.x, dy = a.y - b.y;
+          let d2 = dx * dx + dy * dy || 0.01;
+          let d = Math.sqrt(d2);
+          let f = Math.min(4000 / d2, 8);
+          a.vx += (dx / d) * f; a.vy += (dy / d) * f;
+          b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
+        }
+      }
+      edges.forEach(e => {
+        const a = gPos[e.src], b = gPos[e.dst];
+        if (!a || !b) return;
+        let dx = b.x - a.x, dy = b.y - a.y;
+        let d = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        let f = (d - 130) * 0.02;
+        a.vx += (dx / d) * f; a.vy += (dy / d) * f;
+        b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
+      });
+      nodes.forEach(nd => {
+        const p = gPos[nd.id]; if (!p) return;
+        p.vx += (w / 2 - p.x) * 0.012; p.vy += (h / 2 - p.y) * 0.012;
+        p.vx *= 0.8; p.vy *= 0.8;
+        p.x = Math.max(20, Math.min(w - 20, p.x + p.vx));
+        p.y = Math.max(20, Math.min(h - 20, p.y + p.vy));
+      });
+    }
+  }
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = '#31445c'; ctx.lineWidth = 1.2;
+  edges.forEach(e => {
+    const a = gPos[e.src], b = gPos[e.dst];
+    if (!a || !b) return;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  });
+  ctx.font = '12px system-ui';
+  nodes.forEach(nd => {
+    const p = gPos[nd.id]; if (!p) return;
+    const isP = nd.type === 'person';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, isP ? 12 : 7, 0, Math.PI * 2);
+    ctx.fillStyle = isP ? '#4da3ff' : '#f2b344';
+    ctx.fill();
+    ctx.fillStyle = '#d7e0ea';
+    ctx.fillText(nd.label || '', p.x + 15, p.y + 4);
+  });
+}
+
 async function loadDossier() {
   const sel = $('case-select');
   currentCase = sel.value ? Number(sel.value) : null;
   const box = $('dossier'), tbody = document.querySelector('#jobs-table tbody');
-  if (!currentCase) { tbody.innerHTML=''; box.innerHTML = '<p class="muted">Кейс не выбран.</p>'; return; }
+  if (!currentCase) { tbody.innerHTML=''; box.innerHTML = '<p class="muted">Кейс не выбран.</p>'; renderReviews([], []); return; }
   let d;
   try { d = await api(`/api/cases/${currentCase}`); }
   catch (e) { box.innerHTML = `<p class="err">${escapeHtml(e.message)}</p>`; return; }
+
+  renderReviews(d.reviews || [], d.persons || []);
+  loadGraph();
 
   tbody.innerHTML = d.jobs.map(j => `
     <tr>
@@ -277,7 +418,10 @@ async function loadDossier() {
 
   box.innerHTML = d.persons.length ? d.persons.map(p => `
     <div class="person">
-      <h3>👤 ${escapeHtml(p.display_name)} <span class="muted">(confidence ${p.confidence})</span></h3>
+      <h3>👤 ${escapeHtml(p.display_name)} <span class="muted">(confidence ${p.confidence})</span>
+        ${p.meta && p.meta.signals ? Object.entries(p.meta.signals).map(([k, v]) =>
+          `<span class="chip">${escapeHtml(k)}: ${escapeHtml(typeof v === 'boolean' ? '✓' : String(v))}</span>`).join('') : ''}
+      </h3>
       <div>${p.accounts.map(a => `<a class="chip" target="_blank" rel="noopener"
             href="${escapeHtml(a.url||'#')}">${escapeHtml(a.platform)}/${escapeHtml(a.handle)}
             · ${a.confidence}</a>`).join('') || '<span class="muted">нет аккаунтов</span>'}</div>
